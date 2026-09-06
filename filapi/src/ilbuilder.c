@@ -53,9 +53,8 @@ Ref il_add_param(ILBuilder *ilb, int cls) {
         assert(ilb->cur);
         assert(ilb->cur == ilb->fn->start);
         /* params must precede all other instructions */
-        for (uint i = 0; i < ilb->cur->nins; i++) {
-                assert(ilb->cur->ins[i].op == Opar);
-        }
+        for (uint i = 0; i < ilb->cur->nins; i++)
+                assert(ilb->cur->ins[i].op == Opar || ilb->cur->ins[i].op == Oparc);
         Ref r = newtmp(0, cls, ilb->fn);
         Ins i = {.op = Opar, .cls = cls, .to = r, .arg = {R, R}};
         addins(&ilb->cur->ins, &ilb->cur->nins, &i);
@@ -63,6 +62,22 @@ Ref il_add_param(ILBuilder *ilb, int cls) {
 }
 void il_function_set_vararg(Fn *fn) {
         fn->vararg = 1;
+}
+void il_function_set_retty(Fn *fn, int idx) {
+        assert(idx >= 0 && (uint)idx < ntyp);
+        fn->retty = idx;
+}
+Ref il_add_parc(ILBuilder *ilb, int idx) {
+        assert(ilb->cur);
+        assert(ilb->cur == ilb->fn->start);
+        assert(idx >= 0 && (uint)idx < ntyp);
+        /* params must precede all other instructions */
+        for (uint i = 0; i < ilb->cur->nins; i++)
+                assert(ilb->cur->ins[i].op == Opar || ilb->cur->ins[i].op == Oparc);
+        Ref r = newtmp(0, Kl, ilb->fn);
+        Ins in = {.op = Oparc, .cls = Kl, .to = r, .arg = {TYPE(idx), R}};
+        addins(&ilb->cur->ins, &ilb->cur->nins, &in);
+        return r;
 }
 Fn *il_create_function(const char *name, int retty, Lnk *lnk) {
         /* retty is a typ[] index, not a class; Kx until aggregate types land */
@@ -397,6 +412,7 @@ void il_create_ret_l(ILBuilder *ilb, Ref v) { set_jmp(ilb, Jretl, v, NULL, NULL)
 void il_create_ret_s(ILBuilder *ilb, Ref v) { set_jmp(ilb, Jrets, v, NULL, NULL); }
 void il_create_ret_d(ILBuilder *ilb, Ref v) { set_jmp(ilb, Jretd, v, NULL, NULL); }
 void il_create_ret_void(ILBuilder *ilb) { set_jmp(ilb, Jret0, R, NULL, NULL); }
+void il_create_ret_c(ILBuilder *ilb, Ref v) { set_jmp(ilb, Jretc, v, NULL, NULL); }
 void il_create_unreachable(ILBuilder *ilb) { set_jmp(ilb, Jhlt, R, NULL, NULL); }
 
 /*----------------- Phi / Call / Variadic HELPERS -----------------*/
@@ -433,19 +449,35 @@ static int refclass(ILBuilder *ilb, Ref r) {
         }
         return Kw;
 }
+void il_call_arg(ILBuilder *ilb, Ref val) {
+        assert(ilb->cur);
+        int k = refclass(ilb, val);
+        Ins a = {.op = Oarg, .cls = k, .to = R, .arg = {val, R}};
+        addins(&ilb->cur->ins, &ilb->cur->nins, &a);
+}
+void il_call_arg_c(ILBuilder *ilb, int idx, Ref addr) {
+        assert(ilb->cur);
+        assert(idx >= 0 && (uint)idx < ntyp);
+        Ins a = {.op = Oargc, .cls = Kl, .to = R, .arg = {TYPE(idx), addr}};
+        addins(&ilb->cur->ins, &ilb->cur->nins, &a);
+}
+Ref il_call_emit(ILBuilder *ilb, int retcls, int retty_idx, Ref fn) {
+        assert(ilb->cur);
+        assert(retty_idx == Kx || (retty_idx >= 0 && (uint)retty_idx < ntyp));
+        /* parser lowers :typ call returns to Kl (parse.c) */
+        int cls   = retty_idx >= 0 ? Kl : retcls;
+        Ref extra = retty_idx >= 0 ? TYPE(retty_idx) : R;
+        Ref r     = newtmp(0, cls, ilb->fn);
+        Ins i     = {.op = Ocall, .cls = cls, .to = r, .arg = {fn, extra}};
+        addins(&ilb->cur->ins, &ilb->cur->nins, &i);
+        return r;
+}
 Ref createcall(ILBuilder *ilb, int cls, Ref fn, Ref args[], int nargs) {
         assert(ilb->cur);
         // QBE calls pass args via Oarg insns preceding the Ocall
-        for (int i = 0; i < nargs; i++) {
-                int k = refclass(ilb, args[i]);
-                Ins a = {.op = Oarg, .cls = k, .to = R, .arg = {args[i], R}};
-                addins(&ilb->cur->ins, &ilb->cur->nins, &a);
-        }
-
-        Ref r = newtmp(0, cls, ilb->fn);
-        Ins i = {.op = Ocall, .cls = cls, .to = r, .arg = {fn, R}};
-        addins(&ilb->cur->ins, &ilb->cur->nins, &i);
-        return r;
+        for (int i = 0; i < nargs; i++)
+                il_call_arg(ilb, args[i]);
+        return il_call_emit(ilb, cls, Kx, fn);
 }
 Ref createvaarg(ILBuilder *ilb, int cls, Ref ap) {
         assert(ilb->cur);

@@ -28,7 +28,9 @@ Blk *il_get_insert_block(ILBuilder *ilb);               /* get cur block */
 Blk *il_create_block(ILBuilder *ilb, const char *name); /* new block @name */
 /* parameters (must be added before any other instruction in the function) */
 Ref il_add_param(ILBuilder *ilb, int cls);                     /* declare fn param of class cls, returns its tmp */
+Ref il_add_parc(ILBuilder *ilb, int idx);                      /* aggregate param :typ[idx], returns address tmp */
 void il_function_set_vararg(Fn *fn);                           /* mark fn as variadic */
+void il_function_set_retty(Fn *fn, int idx);                   /* aggregate return type :typ[idx] */
 Fn *il_create_function(const char *name, int retty, Lnk *lnk); /* alloc new Fn; retty is typ[] idx or Kx */
 Fn *il_finish(ILBuilder *ilb);                                 /* finalize mem/rpo */
 
@@ -188,6 +190,7 @@ void il_create_ret_l(ILBuilder *ilb, Ref v);                                    
 void il_create_ret_s(ILBuilder *ilb, Ref v);                                    /* ret s */
 void il_create_ret_d(ILBuilder *ilb, Ref v);                                    /* ret d */
 void il_create_ret_void(ILBuilder *ilb);                                        /* ret void */
+void il_create_ret_c(ILBuilder *ilb, Ref v);                                    /* ret aggregate address */
 void il_create_unreachable(ILBuilder *ilb);                                     /* hlt */
 
 /* phi / select / call / variadic */
@@ -199,6 +202,9 @@ Ref il_create_call_w(ILBuilder *ilb, Ref fn, Ref args[], int nargs); /* call -> 
 Ref il_create_call_l(ILBuilder *ilb, Ref fn, Ref args[], int nargs); /* call -> l */
 Ref il_create_call_s(ILBuilder *ilb, Ref fn, Ref args[], int nargs); /* call -> s */
 Ref il_create_call_d(ILBuilder *ilb, Ref fn, Ref args[], int nargs); /* call -> d */
+void il_call_arg(ILBuilder *ilb, Ref val);                           /* plain call arg (Oarg) */
+void il_call_arg_c(ILBuilder *ilb, int idx, Ref addr);               /* aggregate call arg :typ[idx] (Oargc) */
+Ref il_call_emit(ILBuilder *ilb, int retcls, int retty_idx, Ref fn); /* emit call; retty_idx Kx for plain */
 void il_create_vastart(ILBuilder *ilb, Ref ap);                      /* vastart ap */
 Ref il_create_vaarg_w(ILBuilder *ilb, Ref ap);                       /* vaarg w */
 Ref il_create_vaarg_l(ILBuilder *ilb, Ref ap);                       /* vaarg l */

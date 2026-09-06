@@ -1,228 +1,195 @@
-# Feather IL API (`filapi`) & `ILBuilder` Tutorial
+# Feather IL API (filapi)
 
-`filapi` is an LLVM `IRBuilder`-style C library designed for programmatically generating Feather intermediate representation (IL) instructions, basic blocks, and control flow. It enables compiler frontends (such as the `quil` compiler) to emit clean, correct IR without manually constructing raw instructions, temporary identifiers, or basic block linkage chains.
+`filapi` is an LLVM `IRBuilder`-style C library for programmatically generating Feather intermediate representation (IL). Frontends (such as the `quil` compiler) build functions, data, types, and whole modules in memory and emit assembly directly — no text round-trip, no subprocess.
 
----
-
-## Table of Contents
-1. [Core Concepts](#core-concepts)
-2. [Lifecycle & Basic Workflow](#lifecycle--basic-workflow)
-3. [Tutorials & Code Examples](#tutorials--code-examples)
-   - [Example 1: Returning a Constant Integer](#example-1-returning-a-constant-integer)
-   - [Example 2: Control Flow (`if/else` branching)](#example-2-control-flow-ifelse-branching)
-   - [Example 3: Stack Allocation, Load, and Store](#example-3-stack-allocation-load-and-store)
-4. [Complete API Reference Summary](#complete-api-reference-summary)
-   - [Lifecycle & Management](#lifecycle--management)
-   - [Constants](#constants)
-   - [Arithmetic & Logic](#arithmetic--logic)
-   - [Memory Operations](#memory-operations)
-   - [Conversions & Casts](#conversions--casts)
-   - [Comparisons](#comparisons)
-   - [Control Flow](#control-flow)
-   - [Phi, Calls & Variadic Functions](#phi-calls--variadic-functions)
-
----
-
-## Core Concepts
-
-- **Convenience Header**: Users can simply `#include "filapi/filapi.h"` to bring in both configuration and the ILBuilder API in one include.
-- **`ILBuilder`**: A wrapper struct holding the current function (`Fn *fn`) and the current insertion basic block (`Blk *cur`), analogous to LLVM's `IRBuilder`.
-- **`Ref`**: Represents an operand in Feather IL—this can be a virtual register (temporary), a constant, or a global reference.
-- **`Blk`**: Represents a basic block containing a sequence of instructions terminated by a jump/return instruction (`jmp`).
-
----
-
-## Lifecycle & Basic Workflow
-
-Using `filapi` follows a standard builder pattern:
-1. **Create Function**: Call `il_create_function(...)` to allocate and initialize a new Feather function (`Fn`).
-2. **Initialize Builder**: Wrap the function with `il_create(fn)`.
-3. **Build Blocks & Instructions**:
-   - Create basic blocks using `il_create_block(...)`.
-   - Set the active insertion point using `il_set_insert_point(...)`.
-   - Emit instructions (arithmetic, memory, comparisons, control flow) which return `Ref` handles for subsequent use.
-4. **Finalize**: Call `il_finish(ilb)` to compute block post-order (RPO) lists and finalize function metadata.
-
----
-
-## Tutorials & Code Examples
-
-### Example 1: Returning a Constant Integer
-This minimal example creates a function `main` that returns the constant `42`.
+Include one umbrella header:
 
 ```c
-#include "filapi/filapi.h"
-#include <stdio.h>
+#include "filapi/filapi.h" /* ilbuilder.h + data.h + module.h + type.h */
+```
 
+Host programs must define the feather globals (as the tests do):
+
+```c
 Target T;
 char debug['Z' + 1];
 int optlevel = 0;
-extern Target T_amd64_sysv;
-
-int main(void) {
-    T = T_amd64_sysv;
-    Lnk lnk = {.export = 1};
-    
-    /* 1. Create function returning 32-bit word (Kw) */
-    Fn *fn = il_create_function("main", Kx, &lnk);
-    
-    /* 2. Initialize builder */
-    ILBuilder *bd = il_create(fn);
-    
-    /* 3. Create entry block and set insertion point */
-    Blk *b = il_create_block(bd, "start");
-    il_set_insert_point(bd, b);
-    
-    /* 4. Generate constant 42 and return */
-    Ref c = il_const_int_w(bd, 42);
-    il_create_ret_w(bd, c);
-    
-    /* 5. Finalize function */
-    fn = il_finish(bd);
-    il_destroy(bd);
-    
-    printf("Successfully built function '%s' with %d block(s).\n", fn->name, fn->nblk);
-    return 0;
-}
 ```
 
 ---
 
-### Example 2: Control Flow (`if/else` branching)
-This example demonstrates conditional branching (`jnz`) using `il_create_cond_br` across three basic blocks (`entry`, `then`, `else`).
+## Code Snippets by Category
 
+### 1. Function Lifecycle
 ```c
-#include "filapi/filapi.h"
-#include <stdio.h>
+Lnk lnk = {.export = 1};
+/* retty is a typ[] index, NOT a class: Kx for plain returns */
+Fn *fn = il_create_function("my_func", Kx, &lnk);
+ILBuilder *bd = il_create(fn);
 
-Target T;
-char debug['Z' + 1];
-int optlevel = 0;
-extern Target T_amd64_sysv;
+Blk *entry = il_create_block(bd, "entry");
+il_set_insert_point(bd, entry);
 
-int main(void) {
-    T = T_amd64_sysv;
-    Lnk lnk = {.export = 1};
-    
-    Fn *fn = il_create_function("test_ctrl", Kx, &lnk);
-    ILBuilder *bd = il_create(fn);
+// ... emit code ...
 
-    /* Create blocks */
-    Blk *b_entry = il_create_block(bd, "entry");
-    Blk *b_then  = il_create_block(bd, "then");
-    Blk *b_else  = il_create_block(bd, "else");
+fn = il_finish(bd);
+il_destroy(bd); /* only if you never emit: emit frees builders via freeall() */
+```
 
-    /* Entry block: evaluate condition and branch */
-    il_set_insert_point(bd, b_entry);
-    Ref cond = il_const_int_w(bd, 1);
-    il_create_cond_br(bd, cond, b_then, b_else);
+### 2. Parameters (must come first in the function)
+```c
+Ref a = il_add_param(bd, Kw);
+Ref b = il_add_param(bd, Kw);
+Ref p = il_add_parc(bd, type_idx); /* aggregate param, returns address tmp */
+il_function_set_vararg(fn);        /* variadic function */
+il_function_set_retty(fn, idx);    /* aggregate return type */
+```
 
-    /* Then block: return 10 */
-    il_set_insert_point(bd, b_then);
-    Ref v1 = il_const_int_w(bd, 10);
-    il_create_ret_w(bd, v1);
+### 3. Constants
+```c
+Ref c_int32  = il_const_int_w(bd, 42);
+Ref c_int64  = il_const_int_l(bd, 1337);
+Ref c_float  = il_const_float_s(bd, 3.14f);
+Ref c_double = il_const_float_d(bd, 2.71828);
+Ref c_zero   = il_const_zero(bd);
+Ref c_undef  = il_const_undef(bd);
+```
 
-    /* Else block: return 20 */
-    il_set_insert_point(bd, b_else);
-    Ref v2 = il_const_int_w(bd, 20);
-    il_create_ret_w(bd, v2);
+### 4. Arithmetic & Negation
+```c
+Ref sum  = il_create_add_w(bd, a, b);
+Ref diff = il_create_sub_l(bd, x, y);
+Ref prod = il_create_mul_s(bd, f1, f2);
+Ref quot = il_create_div_d(bd, d1, d2);
+Ref negv = il_create_neg_w(bd, a);
+Ref gen_add = il_create_add(bd, Kw, a, b); /* generic: cls = Kw/Kl/Ks/Kd */
+```
 
-    fn = il_finish(bd);
-    il_destroy(bd);
-    
-    printf("Control flow test compiled successfully!\n");
-    return 0;
-}
+### 5. Bitwise & Shifts
+```c
+Ref bit_and = il_create_and_w(bd, a, b);
+Ref bit_or  = il_create_or_w(bd, a, b);
+Ref bit_xor = il_create_xor_w(bd, a, b);
+Ref shl     = il_create_shl_l(bd, val, amt);
+Ref shr     = il_create_shr_w(bd, val, amt);
+Ref sar     = il_create_sar_w(bd, val, amt);
+```
+
+### 6. Memory Operations
+```c
+Ref ptr  = il_create_alloc4(bd, il_const_int_w(bd, 16));
+il_create_store_w(bd, val, ptr);
+il_create_store(bd, Kw, val, ptr);          /* generic */
+Ref wval = il_create_load_w(bd, ptr);
+Ref lval = il_create_load(bd, Kl, ptr);     /* generic */
+il_create_blit(bd, dst_ptr, src_ptr, 32);
+```
+
+### 7. Conversions, Casts & Copies
+```c
+Ref ext   = il_create_extsw_l(bd, w_val);
+Ref trunc = il_create_truncd_s(bd, d_val);
+Ref ftoz  = il_create_stosi_w(bd, f_val);
+Ref itof  = il_create_swtof_s(bd, i_val);
+Ref cast  = il_create_cast_l(bd, s_val);
+Ref cp    = il_create_copy_w(bd, w_val);
+```
+
+### 8. Comparisons
+```c
+Ref icmp = il_create_icmp_slt_w(bd, a, b);
+Ref fcmp = il_create_fcmp_lt_s(bd, f1, f2);
+```
+
+### 9. Control Flow & Returns
+```c
+il_create_br(bd, target_block);
+il_create_cond_br(bd, cond_ref, then_block, else_block);
+il_create_ret_w(bd, ret_val);   /* _l/_s/_d variants */
+il_create_ret_c(bd, agg_addr);  /* aggregate return (needs set_retty) */
+il_create_ret_void(bd);
+il_create_unreachable(bd);
+```
+
+### 10. Phi Nodes, Calls & Varargs
+```c
+Blk *preds[] = {block_a, block_b};
+Ref vals[]   = {val_a, val_b};
+Ref phi      = il_create_phi_w(bd, preds, vals, 2);
+
+/* simple call */
+Ref args[]   = {arg1, arg2};
+Ref call_ret = il_create_call_w(bd, callee_ref, args, 2);
+
+/* split-phase call (needed for mixed plain/aggregate args) */
+il_call_arg(bd, plain_val);
+il_call_arg_c(bd, type_idx, agg_addr);
+Ref call2 = il_call_emit(bd, Kw, Kx, callee_ref); /* Kx = plain return */
+
+il_create_vastart(bd, ap_ptr);
+Ref va_arg   = il_create_vaarg_w(bd, ap_ptr);
+```
+
+### 11. Symbols & Data (globals)
+```c
+Ref puts = il_extern_sym(bd, "puts");   /* extern fn: CAddr/SExt const */
+Ref gref = il_global_sym(bd, "mystr");  /* module-local symbol: CAddr/SGlo */
+
+Lnk dlnk = {.export = 1};
+IlData *d = il_data_begin("mystr", &dlnk);
+il_data_add_str(d, DB, "hi");           /* quotes added automatically */
+il_data_add_b(d, 0);
+il_data_add_w(d, 0x12345678);
+il_data_add_ref(d, DW, "extsym", 8);    /* $extsym+8 */
+il_data_add_zero(d, 16);                /* 16 zero bytes */
+il_data_end(d);
+```
+
+### 12. Aggregate Types
+```c
+IlType *t = il_type_begin("point");
+il_type_add_w(t, 2);                    /* two words */
+int idx = il_type_end(t);               /* typ[] index (stable across grows) */
+
+IlType *u = il_type_begin("mixed");
+il_type_add_b(u, 1);
+il_type_add_l(u, 1);                    /* padding auto-computed */
+int idx2 = il_type_end(u);
+
+IlType *v = il_type_begin("haspoint");
+il_type_add_subtype(v, idx, 1);         /* nested :point */
+il_type_add_w(v, 1);
+int idx3 = il_type_end(v);
+```
+
+### 13. Module: Own the Program, Emit Asm
+```c
+T = T_amd64_sysv; /* host sets target (and optlevel) before emit */
+
+IlModule *m = il_module_create();
+il_module_add_data(m, d);
+il_module_add_function(m, fn);
+il_module_emit(m, stdout); /* full pipeline (ssa, isel, regalloc) + asm */
 ```
 
 ---
 
-### Example 3: Stack Allocation, Load, and Store
-Frontends frequently need local variables allocated on the stack. Here is how to allocate space, store a value, load it back, and add to it.
+## Contract Rules (read before extending filapi)
 
-```c
-#include "filapi/filapi.h"
-
-Target T;
-char debug['Z' + 1];
-int optlevel = 0;
-extern Target T_amd64_sysv;
-
-int main(void) {
-    T = T_amd64_sysv;
-    Fn *fn = il_create_function("local_var_func", Kx, NULL);
-    ILBuilder *bd = il_create(fn);
-
-    Blk *b = il_create_block(bd, "entry");
-    il_set_insert_point(bd, b);
-
-    /* Allocate 4 bytes on stack (aligned to 4) */
-    Ref size = il_const_int_w(bd, 4);
-    Ref slot = il_create_alloc4(bd, size);
-
-    /* Store constant 100 into slot */
-    Ref val = il_const_int_w(bd, 100);
-    il_create_store_w(bd, val, slot);
-
-    /* Load value back from slot */
-    Ref loaded = il_create_load_w(bd, slot);
-
-    /* Add 5 to loaded value */
-    Ref five = il_const_int_w(bd, 5);
-    Ref result = il_create_add_w(bd, loaded, five);
-
-    il_create_ret_w(bd, result);
-    il_finish(bd);
-    il_destroy(bd);
-    return 0;
-}
-```
+1. **`retty` is a `typ[]` index, never a class.** Pass `Kx` for plain returns; the constructor asserts this. Return *values* still carry their class via the `Jret*` jump.
+2. **Params first.** `il_add_param`/`il_add_parc` must precede all other instructions (asserted). The backend assumes `Opar`s lead the start block.
+3. **Lifetimes vs `freeall()`.** Emit frees all pool-tracked (`alloc`/`PFn`) memory per module. Anything outliving one `compilefn` — module/data structs, type registry, interned strings — must use untracked `emalloc`/`PHeap`. After `il_module_emit`, builders and `Fn`s are dead; never `il_destroy` a builder whose function was emitted (double free).
+4. **Mirror-the-parser rule.** Builder output must match `parse.c` shapes exactly (`Opar`, `Oarg` runs, `DStart…DEnd` items, field layout). When in doubt, the parser is the reference and any divergence is a builder bug.
+5. **Indices, not pointers, for types.** Growing `typ[]` can relocate it — always store/pass the `int` index.
 
 ---
 
-## Complete API Reference Summary
+## Running Tests
 
-### Lifecycle & Management
-- `ILBuilder *il_create(Fn *fn)`: Creates an `ILBuilder` for function `fn`.
-- `void il_destroy(ILBuilder *ilb)`: Frees the builder struct.
-- `void il_set_insert_point(ILBuilder *ilb, Blk *blk)`: Sets the current insertion block.
-- `Blk *il_get_insert_block(ILBuilder *ilb)`: Gets the current insertion block.
-- `Blk *il_create_block(ILBuilder *ilb, const char *name)`: Creates a new basic block with `name`.
-- `Fn *il_create_function(const char *name, int retty, Lnk *lnk)`: Allocates and initializes a new function.
-- `Fn *il_finish(ILBuilder *ilb)`: Computes RPO and finalizes function structures.
+API tests live in `test/apitest/` (one file per unit: arith, bitwise, memory, conv, cmp, control, params, data, types, phi/call/va, module):
 
-### Constants
-- `il_const_int_w(ilb, v)` / `il_const_int_l(ilb, v)`: 32-bit / 64-bit integer constants.
-- `il_const_float_s(ilb, v)` / `il_const_float_d(ilb, v)`: Single / double precision float constants.
-- `il_const_undef(ilb)`: Undefined constant (`UNDEF`).
-- `il_const_zero(ilb)`: Zero constant (`0`).
-
-### Arithmetic & Logic
-- **Arithmetic**: `il_create_add_w`, `il_create_sub_w`, `il_create_mul_w`, `il_create_div_w`, `il_create_udiv_w`, `il_create_rem_w`, `il_create_urem_w`, `il_create_neg_w` (also available for `_l`, `_s`, `_d`).
-- **Bitwise**: `il_create_and_w`, `il_create_or_w`, `il_create_xor_w`, `il_create_shl_w`, `il_create_shr_w`, `il_create_sar_w` (also `_l` variants).
-
-### Memory Operations
-- **Allocation**: `il_create_alloc4`, `il_create_alloc8`, `il_create_alloc16`.
-- **Loads**: `il_create_load_w`, `il_create_load_l`, `il_create_load_s`, `il_create_load_d`, `il_create_load_sb`, `il_create_load_ub`, `il_create_load_sh`, `il_create_load_uh`, `il_create_load_sw`, `il_create_load_uw`.
-- **Stores**: `il_create_store_w`, `il_create_store_l`, `il_create_store_s`, `il_create_store_d`, `il_create_store_b`, `il_create_store_h`.
-- **Block Move**: `il_create_blit(ilb, dst, src, n)`.
-
-### Conversions & Casts
-- **Extensions & Truncations**: `il_create_extsb_w`, `il_create_extub_w`, `il_create_extsh_w`, `il_create_extuh_w`, `il_create_extsw_l`, `il_create_extuw_l`, `il_create_exts_d`, `il_create_truncd_s`.
-- **Int/Float Conversions**: `il_create_stosi_w`, `il_create_stoui_w`, `il_create_dtosi_w`, `il_create_dtoui_w`, `il_create_swtof_s`, `il_create_uwtof_s`, `il_create_sltof_s`, `il_create_ultof_s`, etc.
-- **Bitcasts & Copies**: `il_create_cast_w`, `il_create_cast_l`, `il_create_cast_s`, `il_create_cast_d`, `il_create_copy_w`, `il_create_copy_l`, etc.
-
-### Comparisons
-- **Integer Comparisons (`_w`, `_l`)**: `il_create_icmp_eq`, `ne`, `sge`, `sgt`, `sle`, `slt`, `uge`, `ugt`, `ule`, `ult`.
-- **Floating-point Comparisons (`_s`, `_d`)**: `il_create_fcmp_eq`, `ne`, `ge`, `gt`, `le`, `lt`, `o` (ordered), `uo` (unordered).
-
-### Control Flow
-- `il_create_br(ilb, dst)`: Unconditional branch (`jmp`).
-- `il_create_cond_br(ilb, cond, then_blk, else_blk)`: Conditional branch (`jnz`).
-- `il_create_ret_w(ilb, v)` / `_l` / `_s` / `_d` / `il_create_ret_void(ilb)`: Return instructions.
-- `il_create_unreachable(ilb)`: Unreachable instruction (`hlt`).
-
-### Phi, Calls & Variadic Functions
-- **Phi Nodes**: `il_create_phi_w(ilb, blks[], vals[], n)` (and `_l`, `_s`, `_d`).
-- **Function Calls**: `il_create_call_w(ilb, fn, args[], nargs)` (and `_l`, `_s`, `_d`).
-- **Variadic Support**: `il_create_vastart`, `il_create_vaarg_w` (and `_l`, `_s`, `_d`).
+```bash
+make check-apitest
+# or directly:
+tools/apitest.sh all
+```

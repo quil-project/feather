@@ -14,6 +14,9 @@
  * Holds all the important data structure and enums.
  */
 
+#ifndef FEATHER_ALL_H
+#define FEATHER_ALL_H
+
 #include <assert.h>
 #include <inttypes.h>
 #include <limits.h>
@@ -533,6 +536,7 @@ typedef enum {
 } Pool;
 
 extern Typ *typ;
+extern uint ntyp; /* type registry count (parse.c) */
 extern Ins insb[NIns], *curi;
 uint32_t hash(char *);
 void die_(char *, char *, ...) __attribute__((noreturn));
@@ -683,3 +687,5 @@ void elf_emitfnfin(char *, FILE *);
 void elf_emitfin(FILE *);
 void macho_emitfin(FILE *);
 void pe_emitfin(FILE *);
+
+#endif /* FEATHER_ALL_H */

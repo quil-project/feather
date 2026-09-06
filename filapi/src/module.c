@@ -103,7 +103,8 @@ static void compilefn(Fn *fn, FILE *out) {
         }
         T.emitfn(fn, out);
         fprintf(out, "/* end function %s */\n\n", fn->name);
-        freeall();
+        /* no freeall() here: unlike main.c (one fn at a time), the module
+           holds all fns upfront, so freeing would kill not-yet-emitted fns */
 }
 void il_module_emit(IlModule *m, FILE *out) {
         for (uint i = 0; i < m->ndat; i++) {
@@ -116,4 +117,5 @@ void il_module_emit(IlModule *m, FILE *out) {
         for (uint i = 0; i < m->nfn; i++) {
                 compilefn(m->fns[i], out);
         }
+        freeall(); /* all fns dead after this point, like main.c per function */
 }

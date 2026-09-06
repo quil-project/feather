@@ -19,7 +19,7 @@ for o in \
   $objdir/amd64/targ.o $objdir/amd64/sysv.o $objdir/amd64/isel.o $objdir/amd64/emit.o $objdir/amd64/winabi.o \
   $objdir/arm64/targ.o $objdir/arm64/abi.o $objdir/arm64/isel.o $objdir/arm64/emit.o \
   $objdir/rv64/targ.o $objdir/rv64/abi.o $objdir/rv64/isel.o $objdir/rv64/emit.o \
-  $objdir/filapi/src/ilbuilder.o $objdir/filapi/src/data.o $objdir/filapi/src/module.o; do
+  $objdir/filapi/src/ilbuilder.o $objdir/filapi/src/data.o $objdir/filapi/src/module.o $objdir/filapi/src/type.o; do
   if test -f "$o"; then
     objs="$objs $o"
   else
