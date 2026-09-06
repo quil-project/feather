@@ -10,7 +10,7 @@ extern Target T_amd64_sysv;
 int main(void){
   T = T_amd64_sysv;
   Lnk lnk = {.export=1};
-  Fn *fn = il_create_function("main", Kw, &lnk);
+  Fn *fn = il_create_function("main", Kx, &lnk);
   ILBuilder *bd = il_create(fn);
   Blk *b = il_create_block(bd, "start");
   il_set_insert_point(bd, b);

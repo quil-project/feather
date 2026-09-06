@@ -8,6 +8,7 @@
 /* API for easy IL creation in the frontend */
 
 #include "../include/ilbuilder.h"
+#include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -47,7 +48,25 @@ Blk *il_create_block(ILBuilder *ilb, const char *name) {
 
         return b;
 }
+/* function */
+Ref il_add_param(ILBuilder *ilb, int cls) {
+        assert(ilb->cur);
+        assert(ilb->cur == ilb->fn->start);
+        /* params must precede all other instructions */
+        for (uint i = 0; i < ilb->cur->nins; i++) {
+                assert(ilb->cur->ins[i].op == Opar);
+        }
+        Ref r = newtmp(0, cls, ilb->fn);
+        Ins i = {.op = Opar, .cls = cls, .to = r, .arg = {R, R}};
+        addins(&ilb->cur->ins, &ilb->cur->nins, &i);
+        return r;
+}
+void il_function_set_vararg(Fn *fn) {
+        fn->vararg = 1;
+}
 Fn *il_create_function(const char *name, int retty, Lnk *lnk) {
+        /* retty is a typ[] index, not a class; Kx until aggregate types land */
+        assert(retty == Kx);
         Fn *fn   = alloc(sizeof(Fn));
         *fn      = (Fn){0};
         fn->tmp  = vnew(0, sizeof(Tmp), PFn);
@@ -60,7 +79,7 @@ Fn *il_create_function(const char *name, int retty, Lnk *lnk) {
         fn->con[0] = (Con){.type = CBits};
         fn->con[1] = (Con){.type = CBits};
         fn->name   = strf(PFn, "%s", name);
-        fn->retty  = retty;
+        fn->retty  = Kx;
         fn->lnk    = lnk ? *lnk : (Lnk){0};
         fn->start  = NULL;
         fn->nblk   = 0; // blocks added via il_create_block
@@ -118,6 +137,7 @@ Ref il_const_zero(ILBuilder *ilb) {
 /*------------------ ARITHMETIC HELPERS -----------------*/
 // for binrary operations
 static Ref mk2(ILBuilder *ilb, int op, int cls, Ref a, Ref b) {
+        assert(ilb->cur);
         Ref r   = newtmp(0, cls, ilb->fn);
         Ins ins = {.op = op, .cls = cls, .to = r, .arg = {a, b}};
         addins(&ilb->cur->ins, &ilb->cur->nins, &ins);
@@ -125,6 +145,7 @@ static Ref mk2(ILBuilder *ilb, int op, int cls, Ref a, Ref b) {
 }
 // for unary operations
 static Ref mk1(ILBuilder *ilb, int op, int cls, Ref a) {
+        assert(ilb->cur);
         Ref r   = newtmp(0, cls, ilb->fn);
         Ins ins = {.op = op, .cls = cls, .to = r, .arg = {a, R}};
         addins(&ilb->cur->ins, &ilb->cur->nins, &ins);
@@ -191,6 +212,7 @@ Ref il_create_sar_l(ILBuilder *bd, Ref a, Ref b) { return mk2(bd, Osar, Kl, a, b
 
 /*----------------- MEMORY HELPERS -----------------*/
 Ref allocator(ILBuilder *ilb, int op, int cls, Ref n) {
+        assert(ilb->cur);
         Ref r = newtmp(0, cls, ilb->fn);
         Ins i = {.op = op, .cls = cls, .to = r, .arg = {n, R}}; // size = n, second arg R = none
         addins(&ilb->cur->ins, &ilb->cur->nins, &i);
@@ -198,6 +220,7 @@ Ref allocator(ILBuilder *ilb, int op, int cls, Ref n) {
 }
 // load reads memory
 Ref load(ILBuilder *ilb, int op, int cls, Ref addr) {
+        assert(ilb->cur);
         Ref r = newtmp(0, cls, ilb->fn);
         Ins i = {.op = op, .cls = cls, .to = r, .arg = {addr, R}};
         addins(&ilb->cur->ins, &ilb->cur->nins, &i);
@@ -205,6 +228,7 @@ Ref load(ILBuilder *ilb, int op, int cls, Ref addr) {
 }
 // store writes memory
 void store(ILBuilder *ilb, int op, int cls, Ref val, Ref addr) {
+        assert(ilb->cur);
         Ins i = {.op = op, .cls = cls, .to = R, .arg = {val, addr}};
         addins(&ilb->cur->ins, &ilb->cur->nins, &i);
 }
@@ -297,6 +321,7 @@ Ref il_create_copy_d(ILBuilder *ilb, Ref a) { return mk1(ilb, Ocopy, Kd, a); }
 
 /*----------------- COMPARISON HELPERS -----------------*/
 Ref compare(ILBuilder *ilb, int op, int cls, Ref a, Ref b) {
+        assert(ilb->cur);
         Ref r = newtmp(0, cls, ilb->fn);
         Ins i = {.op = op, .cls = cls, .to = r, .arg = {a, b}};
         addins(&ilb->cur->ins, &ilb->cur->nins, &i);
@@ -376,34 +401,54 @@ void il_create_unreachable(ILBuilder *ilb) { set_jmp(ilb, Jhlt, R, NULL, NULL); 
 
 /*----------------- Phi / Call / Variadic HELPERS -----------------*/
 Ref createphi(ILBuilder *ilb, int cls, Blk *blks[], Ref vals[], int n) {
-        Ref r = newtmp(0, cls, ilb->fn);
-        Phi p = {.to = r, .cls = cls, .narg = n, .blk = malloc(n * sizeof(Blk *)), .arg = malloc(n * sizeof(Ref))};
-        for (int i = 0; i < n; i++) {
-                p.blk = &blks[i];
-                p.arg = &vals[i];
-        }
+        assert(ilb->cur);
+        Ref r   = newtmp(0, cls, ilb->fn);
+        Phi *p  = alloc(sizeof *p);
+        p->to   = r;
+        p->cls  = cls;
+        p->narg = n;
+        p->arg  = vnew(n, sizeof(Ref), PFn);
+        memcpy(p->arg, vals, n * sizeof(Ref));
+        p->blk = vnew(n, sizeof(Blk *), PFn);
+        memcpy(p->blk, blks, n * sizeof(Blk *));
 
         // Append to the block's phi chain
-        p.link        = ilb->cur->phi;
-        ilb->cur->phi = &p;
+        p->link       = ilb->cur->phi;
+        ilb->cur->phi = p;
         return r;
 }
+/* class of a value: tmp class for RTmp, float kind for float consts, w otherwise */
+static int refclass(ILBuilder *ilb, Ref r) {
+        if (rtype(r) == RTmp) {
+                return ilb->fn->tmp[r.val].cls;
+        }
+        if (rtype(r) == RCon) {
+                Con *c = &ilb->fn->con[r.val];
+                if (c->flt == 1) {
+                        return Ks;
+                }
+                if (c->flt == 2) {
+                        return Kd;
+                }
+        }
+        return Kw;
+}
 Ref createcall(ILBuilder *ilb, int cls, Ref fn, Ref args[], int nargs) {
-        Ref r = newtmp(0, cls, ilb->fn);
-
-        Ins i    = {0};
-        i.op     = Ocall;
-        i.cls    = cls;
-        i.to     = r;
-        i.arg[0] = fn;
-        if (nargs > 0) {
-                i.arg[1] = args[0];
+        assert(ilb->cur);
+        // QBE calls pass args via Oarg insns preceding the Ocall
+        for (int i = 0; i < nargs; i++) {
+                int k = refclass(ilb, args[i]);
+                Ins a = {.op = Oarg, .cls = k, .to = R, .arg = {args[i], R}};
+                addins(&ilb->cur->ins, &ilb->cur->nins, &a);
         }
 
+        Ref r = newtmp(0, cls, ilb->fn);
+        Ins i = {.op = Ocall, .cls = cls, .to = r, .arg = {fn, R}};
         addins(&ilb->cur->ins, &ilb->cur->nins, &i);
         return r;
 }
 Ref createvaarg(ILBuilder *ilb, int cls, Ref ap) {
+        assert(ilb->cur);
         Ref r = newtmp(0, cls, ilb->fn);
         Ins i = {.op = Ovaarg, .cls = cls, .to = r, .arg = {ap}};
         addins(&ilb->cur->ins, &ilb->cur->nins, &i);
@@ -423,6 +468,7 @@ Ref il_create_call_s(ILBuilder *ilb, Ref fn, Ref args[], int nargs) { return cre
 Ref il_create_call_d(ILBuilder *ilb, Ref fn, Ref args[], int nargs) { return createcall(ilb, Kd, fn, args, nargs); }
 /* variadic */
 void il_create_vastart(ILBuilder *ilb, Ref ap) {
+        assert(ilb->cur);
         Ins i = {.op = Ovastart, .to = R, .arg = {ap}};
         addins(&ilb->cur->ins, &ilb->cur->nins, &i);
 }

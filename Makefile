@@ -26,7 +26,7 @@ COMMOBJ  = $(UTIL_OBJ) $(CORE_OBJ) $(OPT_OBJ) $(REG_OBJ) $(EMIT_OBJ)
 AMD64OBJ = amd64/targ.o amd64/sysv.o amd64/isel.o amd64/emit.o amd64/winabi.o
 ARM64OBJ = arm64/targ.o arm64/abi.o arm64/isel.o arm64/emit.o
 RV64OBJ  = rv64/targ.o rv64/abi.o rv64/isel.o rv64/emit.o
-FILAPIOBJ = filapi/src/ilbuilder.o
+FILAPIOBJ = filapi/src/ilbuilder.o filapi/src/data.o filapi/src/module.o
 
 # Objects required for core library functionality (without main.o)
 CORE_LIB_OBJ = $(addprefix $(BUILDDIR)/,$(COMMOBJ) $(AMD64OBJ) $(ARM64OBJ) $(RV64OBJ) $(FILAPIOBJ))
@@ -36,7 +36,7 @@ OBJ          = $(BUILDDIR)/$(MAIN_OBJ) $(CORE_LIB_OBJ)
 
 REL_CFLAGS   = -std=c99 -O2 -Wall -Wextra -Wpedantic
 
-FILAPI_SRC   = filapi/src/ilbuilder.c
+FILAPI_SRC   = filapi/src/ilbuilder.c filapi/src/data.c filapi/src/module.c
 
 SRCALL       = $(UTIL_OBJ:.o=.c) $(CORE_OBJ:.o=.c) $(OPT_OBJ:.o=.c) $(REG_OBJ:.o=.c) $(EMIT_OBJ:.o=.c) \
                $(AMD64OBJ:.o=.c) $(ARM64OBJ:.o=.c) $(RV64OBJ:.o=.c) $(FILAPI_SRC) main.c
@@ -54,6 +54,7 @@ $(BUILDDIR)/%.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(addprefix $(BUILDDIR)/,$(COMMOBJ)): all.h ops.h
+$(addprefix $(BUILDDIR)/,$(FILAPIOBJ)): filapi/include/ilbuilder.h filapi/include/data.h filapi/include/module.h all.h ops.h config.h
 $(addprefix $(BUILDDIR)/,$(AMD64OBJ)): amd64/all.h
 $(addprefix $(BUILDDIR)/,$(ARM64OBJ)): arm64/all.h
 $(addprefix $(BUILDDIR)/,$(RV64OBJ)): rv64/all.h

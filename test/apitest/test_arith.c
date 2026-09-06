@@ -17,7 +17,7 @@ static int check_op(Blk *b, int idx, int op, const char *name){
 int main(void){
   T = T_amd64_sysv;
   Lnk lnk = {.export=1};
-  Fn *fn = il_create_function("arith", Kw, &lnk);
+  Fn *fn = il_create_function("arith", Kx, &lnk);
   ILBuilder *bd = il_create(fn);
   Blk *b = il_create_block(bd, "start");
   il_set_insert_point(bd, b);

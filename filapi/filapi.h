@@ -9,6 +9,8 @@
 #define FILAPI_H
 
 #include "../config.h"
+#include "include/data.h"
 #include "include/ilbuilder.h"
+#include "include/module.h"
 
 #endif // !FILAPI_H

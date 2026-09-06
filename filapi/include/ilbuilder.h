@@ -21,12 +21,15 @@ struct ILBuilder {
 };
 
 /* lifecycle */
-ILBuilder *il_create(Fn *fn);                                  /* create builder for fn */
-void il_destroy(ILBuilder *ilb);                               /* free builder (not fn) */
-void il_set_insert_point(ILBuilder *ilb, Blk *blk);            /* set cur block */
-Blk *il_get_insert_block(ILBuilder *ilb);                      /* get cur block */
-Blk *il_create_block(ILBuilder *ilb, const char *name);        /* new block @name */
-Fn *il_create_function(const char *name, int retty, Lnk *lnk); /* alloc new Fn */
+ILBuilder *il_create(Fn *fn);                           /* create builder for fn */
+void il_destroy(ILBuilder *ilb);                        /* free builder (not fn) */
+void il_set_insert_point(ILBuilder *ilb, Blk *blk);     /* set cur block */
+Blk *il_get_insert_block(ILBuilder *ilb);               /* get cur block */
+Blk *il_create_block(ILBuilder *ilb, const char *name); /* new block @name */
+/* parameters (must be added before any other instruction in the function) */
+Ref il_add_param(ILBuilder *ilb, int cls);                     /* declare fn param of class cls, returns its tmp */
+void il_function_set_vararg(Fn *fn);                           /* mark fn as variadic */
+Fn *il_create_function(const char *name, int retty, Lnk *lnk); /* alloc new Fn; retty is typ[] idx or Kx */
 Fn *il_finish(ILBuilder *ilb);                                 /* finalize mem/rpo */
 
 /* constants */

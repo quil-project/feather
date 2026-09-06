@@ -64,7 +64,7 @@ int main(void) {
     Lnk lnk = {.export = 1};
     
     /* 1. Create function returning 32-bit word (Kw) */
-    Fn *fn = il_create_function("main", Kw, &lnk);
+    Fn *fn = il_create_function("main", Kx, &lnk);
     
     /* 2. Initialize builder */
     ILBuilder *bd = il_create(fn);
@@ -104,7 +104,7 @@ int main(void) {
     T = T_amd64_sysv;
     Lnk lnk = {.export = 1};
     
-    Fn *fn = il_create_function("test_ctrl", Kw, &lnk);
+    Fn *fn = il_create_function("test_ctrl", Kx, &lnk);
     ILBuilder *bd = il_create(fn);
 
     /* Create blocks */
@@ -150,7 +150,7 @@ extern Target T_amd64_sysv;
 
 int main(void) {
     T = T_amd64_sysv;
-    Fn *fn = il_create_function("local_var_func", Kw, NULL);
+    Fn *fn = il_create_function("local_var_func", Kx, NULL);
     ILBuilder *bd = il_create(fn);
 
     Blk *b = il_create_block(bd, "entry");
