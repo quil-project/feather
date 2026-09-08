@@ -5,7 +5,10 @@ Measures:
   * in-memory compile speed : SSA->asm via feather (-O0/-O1) vs C->asm via clang/gcc
   * runtime speed           : linked binary via driver (best-of-5)
 
-Compares feather output correctness (checksum) vs clang -O2 reference.
+Compares feather output correctness (checksum) vs gcc -O2 reference (default).
+Clang -O2/-O3 numbers are still collected for context, but ratios and
+OK/MISMATCH are computed against gcc because clang folds many kernels
+to 0.0ms, which skews feather/clang ratios.
 
 Usage:
   python3 bench/bench_100.py [--reps 2000] [--compile-iters 50] [--filter dot]
@@ -1720,6 +1723,8 @@ def main():
     ap.add_argument("--compile-iters", type=int, default=None)
     ap.add_argument("--filter", type=str, default=None)
     ap.add_argument("--json", type=str, default=None)
+    ap.add_argument("--ref", type=str, choices=["gcc", "clang"], default="gcc",
+                    help="reference compiler for checksum and ratios (default: gcc)")
     args = ap.parse_args()
 
     compile_iters = args.compile_iters or (10 if args.quick else 30)
@@ -1879,13 +1884,24 @@ def main():
         t_f0, c_f0 = best_of(bin_featherO0, reps, trials=trials)
         t_f1, c_f1 = best_of(bin_featherO1, reps, trials=trials)
 
-        if None in (t_clang, t_f1):
+        # Reference for correctness + ratios: gcc -O2 by default (clang folds
+        # many kernels to 0.0ms). Select via --ref.
+        if args.ref == "gcc":
+            t_ref, c_ref = t_gcc, c_gcc
+            t_ref_compile = t_gccO2
+            ref_label = "gcc"
+        else:
+            t_ref, c_ref = t_clang, c_clang
+            t_ref_compile = t_clangO2
+            ref_label = "clang"
+
+        if None in (t_ref, t_f1):
             print(f"{name:30} {cat:10} RUNTIME FAIL")
             continue
 
-        # Check correctness: feather vs clang
-        ok0 = "OK" if c_clang==c_f0 else "MISMATCH"
-        ok1 = "OK" if c_clang==c_f1 else "MISMATCH"
+        # Check correctness: feather vs reference (gcc by default)
+        ok0 = "OK" if c_ref==c_f0 else "MISMATCH"
+        ok1 = "OK" if c_ref==c_f1 else "MISMATCH"
 
         # In-memory compile speed: also measure piping via stdin (in-memory)
         # feather stdin timing: cat ssa | feather -O1 -o /dev/null
@@ -1899,29 +1915,39 @@ def main():
         rmem_clang = runtime_mem(bin_clangO2, reps)
         rmem_featherO1 = runtime_mem(bin_featherO1, reps)
 
-        # Speedup ratios: feather vs clang (compile: lower is better, runtime: lower is better)
-        # compute feather/clang ratio
-        compile_ratio = (t_featherO1 / t_clangO2) if t_clangO2 else None
-        runtime_ratio_O1 = (t_f1 / t_clang) if t_clang else None
-        runtime_ratio_O0 = (t_f0 / t_clang) if t_clang else None
+        # Speedup ratios: feather vs reference (gcc by default; clang kept for context)
+        # compute feather/ref ratio; guard against ref folding to 0.0ms
+        compile_ratio = (t_featherO1 / t_ref_compile) if t_ref_compile else None
+        runtime_ratio_O1 = (t_f1 / t_ref) if t_ref else None
+        runtime_ratio_O0 = (t_f0 / t_ref) if t_ref else None
+        # clang ratios kept for context/debug
+        compile_ratio_vs_clang = (t_featherO1 / t_clangO2) if t_clangO2 else None
+        runtime_ratio_O1_vs_clang = (t_f1 / t_clang) if t_clang else None
+        runtime_ratio_O1_vs_gcc = (t_f1 / t_gcc) if t_gcc else None
 
         # Print line
         # compile ms, runtime ms, mem KB
         mem_str = f" mem C:{mem_clangO2 or 0}KB F1:{mem_featherO1 or 0}KB G:{mem_gccO2 or 0}KB Rmem C:{rmem_clang or 0} F:{rmem_featherO1 or 0}" if mem_featherO1 else ""
-        print(f"{name:30} {cat:10} C:{t_clangO2:5.1f} F1:{t_featherO1:5.1f} F0:{t_featherO0:5.1f} G:{t_gccO2:5.1f} | R clang:{t_clang*1000:6.1f}ms fO1:{t_f1*1000:6.1f}ms({runtime_ratio_O1:.2f}x) fO0:{t_f0*1000:6.1f}ms | {ok1}/{ok0} {c_clang}{mem_str}", flush=True)
+        print(f"{name:30} {cat:10} C:{t_clangO2:5.1f} F1:{t_featherO1:5.1f} F0:{t_featherO0:5.1f} G:{t_gccO2:5.1f} | R {ref_label}:{(t_ref or 0)*1000:6.1f}ms fO1:{t_f1*1000:6.1f}ms({(runtime_ratio_O1 or 0):.2f}x) fO0:{t_f0*1000:6.1f}ms clang:{(t_clang or 0)*1000:6.1f}ms gcc:{(t_gcc or 0)*1000:6.1f}ms | {ok1}/{ok0} {c_ref}{mem_str}", flush=True)
 
         results.append(dict(
             name=name, category=cat,
             compile_ms_clangO2=t_clangO2, compile_ms_clangO3=t_clangO3, compile_ms_gcc=t_gccO2,
             compile_ms_featherO1=t_featherO1, compile_ms_featherO0=t_featherO0, compile_ms_mem=t_mem,
             compile_mem_featherO1=mem_featherO1, compile_mem_clangO2=mem_clangO2, compile_mem_gcc=mem_gccO2, compile_mem_pipe=mem_memPipe,
-            compile_ratio_O1_vs_clang=compile_ratio,
+            compile_ratio_O1_vs_clang=compile_ratio_vs_clang,
+            compile_ratio_O1_vs_gcc=(t_featherO1 / t_gccO2) if t_gccO2 else None,
+            compile_ratio_O1_vs_ref=compile_ratio,
             runtime_ms_clang=t_clang*1000, runtime_ms_clangO3=t_clang3*1000 if t_clang3 else None,
             runtime_ms_gcc=t_gcc*1000 if t_gcc else None,
+            runtime_ms_ref=t_ref*1000 if t_ref else None,
             runtime_ms_featherO0=t_f0*1000, runtime_ms_featherO1=t_f1*1000,
             runtime_mem_clang=rmem_clang, runtime_mem_featherO1=rmem_featherO1,
             runtime_ratio_O1=runtime_ratio_O1, runtime_ratio_O0=runtime_ratio_O0,
-            checksum_clang=c_clang, checksum_featherO1=c_f1, checksum_featherO0=c_f0,
+            runtime_ratio_O1_vs_clang=runtime_ratio_O1_vs_clang,
+            runtime_ratio_O1_vs_gcc=runtime_ratio_O1_vs_gcc,
+            ref=ref_label,
+            checksum_clang=c_clang, checksum_gcc=c_gcc, checksum_ref=c_ref, checksum_featherO1=c_f1, checksum_featherO0=c_f0,
             ok_O1=(ok1=="OK"), ok_O0=(ok0=="OK"), reps=reps
         ))
 
@@ -1934,32 +1960,32 @@ def main():
     import collections
     cats = collections.defaultdict(list)
     for r in results:
-        if "compile_ratio_O1_vs_clang" in r:
+        if "compile_ratio_O1_vs_ref" in r:
             cats[r["category"]].append(r)
 
     for cat, lst in sorted(cats.items()):
-        avg_compile = statistics.mean(x["compile_ratio_O1_vs_clang"] for x in lst if x["compile_ratio_O1_vs_clang"])
+        avg_compile = statistics.mean(x["compile_ratio_O1_vs_ref"] for x in lst if x["compile_ratio_O1_vs_ref"])
         avg_runtime = statistics.mean(x["runtime_ratio_O1"] for x in lst if x.get("runtime_ratio_O1"))
         slow = sorted(lst, key=lambda x: x["runtime_ratio_O1"] or 0, reverse=True)[:2]
-        print(f"cat {cat:12} n={len(lst):2d} avg compile feather/clang={avg_compile:.2f}x  avg runtime feather/clang={avg_runtime:.2f}x  worst: {', '.join(f'{s['name']}={s['runtime_ratio_O1']:.2f}x' for s in slow)}")
+        print(f"cat {cat:12} n={len(lst):2d} avg compile feather/{args.ref}={avg_compile:.2f}x  avg runtime feather/{args.ref}={avg_runtime:.2f}x  worst: {', '.join(f'{s['name']}={s['runtime_ratio_O1']:.2f}x' for s in slow)}")
 
     # Top slowdowns
     sorted_runtime = sorted([r for r in results if "runtime_ratio_O1" in r], key=lambda x: x["runtime_ratio_O1"] or 0, reverse=True)
-    print("\nTop 15 runtime slowdowns (feather -O1 vs clang -O2):")
+    print(f"\nTop 15 runtime slowdowns (feather -O1 vs {args.ref} -O2):")
     for r in sorted_runtime[:15]:
-        print(f"  {r['name']:30} {r['category']:10} {r['runtime_ratio_O1']:.2f}x  clang={r['runtime_ms_clang']:.1f}ms feather={r['runtime_ms_featherO1']:.1f}ms  {'OK' if r['ok_O1'] else 'MISMATCH'}")
+        print(f"  {r['name']:30} {r['category']:10} {r['runtime_ratio_O1']:.2f}x  ref({r.get('ref', args.ref)})={r['runtime_ms_ref']:.1f}ms feather={r['runtime_ms_featherO1']:.1f}ms clang={r['runtime_ms_clang']:.1f}ms gcc={r['runtime_ms_gcc']:.1f}ms  {'OK' if r['ok_O1'] else 'MISMATCH'}")
 
-    print("\nTop 15 compile slowdowns (feather -O1 vs clang -O2):")
-    sorted_compile = sorted([r for r in results if "compile_ratio_O1_vs_clang" in r], key=lambda x: x["compile_ratio_O1_vs_clang"] or 0, reverse=True)
+    print(f"\nTop 15 compile slowdowns (feather -O1 vs {args.ref} -O2):")
+    sorted_compile = sorted([r for r in results if "compile_ratio_O1_vs_ref" in r], key=lambda x: x["compile_ratio_O1_vs_ref"] or 0, reverse=True)
     for r in sorted_compile[:15]:
-        print(f"  {r['name']:30} {r['compile_ratio_O1_vs_clang']:.2f}x  clang={r['compile_ms_clangO2']:.1f}ms feather={r['compile_ms_featherO1']:.1f}ms")
+        print(f"  {r['name']:30} {r['compile_ratio_O1_vs_ref']:.2f}x  {args.ref}={(r['compile_ms_gcc'] if args.ref=='gcc' else r['compile_ms_clangO2']):.1f}ms feather={r['compile_ms_featherO1']:.1f}ms")
 
     # Overall
-    avg_compile_all = statistics.mean(r["compile_ratio_O1_vs_clang"] for r in results if "compile_ratio_O1_vs_clang" in r)
+    avg_compile_all = statistics.mean(r["compile_ratio_O1_vs_ref"] for r in results if "compile_ratio_O1_vs_ref" in r)
     avg_runtime_all = statistics.mean(r["runtime_ratio_O1"] for r in results if "runtime_ratio_O1" in r)
     mism = [r for r in results if not r.get("ok_O1", True)]
-    print(f"\nOverall avg compile feather/clang: {avg_compile_all:.2f}x  ( <1 = feather faster )")
-    print(f"Overall avg runtime feather/clang: {avg_runtime_all:.2f}x  ( >1 = feather slower )")
+    print(f"\nOverall avg compile feather/{args.ref}: {avg_compile_all:.2f}x  ( <1 = feather faster )")
+    print(f"Overall avg runtime feather/{args.ref}: {avg_runtime_all:.2f}x  ( >1 = feather slower )")
     print(f"Correctness mismatches (O1): {len(mism)}/{len(results)}  {[r['name'] for r in mism]}")
     # memory summary
     mem_feather = [r["compile_mem_featherO1"] for r in results if r.get("compile_mem_featherO1")]
