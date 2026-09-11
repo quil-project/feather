@@ -8,7 +8,7 @@
  * Released under the MIT License.
  */
 
-#include "../all.h"
+#include "../../all.h"
 
 typedef struct Rv64Op Rv64Op;
 

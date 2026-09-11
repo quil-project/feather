@@ -13,7 +13,7 @@
 Rv64Op rv64_op[NOp] = {
 #define O(op, t, x) [O##op] =
 #define V(imm) {imm},
-#include "../ops.h"
+#include "../../ops.h"
 };
 
 int rv64_rsave[] = {

@@ -23,9 +23,9 @@ OPT_OBJ  = src/opt/fold.o src/opt/gvn.o src/opt/gcm.o src/opt/simpl.o src/opt/if
 REG_OBJ  = src/reg/live.o src/reg/spill.o src/reg/rega.o
 EMIT_OBJ = src/emit/emit.o src/emit/abi.o
 COMMOBJ  = $(UTIL_OBJ) $(CORE_OBJ) $(OPT_OBJ) $(REG_OBJ) $(EMIT_OBJ)
-AMD64OBJ = amd64/targ.o amd64/sysv.o amd64/isel.o amd64/emit.o amd64/winabi.o
-ARM64OBJ = arm64/targ.o arm64/abi.o arm64/isel.o arm64/emit.o
-RV64OBJ  = rv64/targ.o rv64/abi.o rv64/isel.o rv64/emit.o
+AMD64OBJ = arch/amd64/targ.o arch/amd64/sysv.o arch/amd64/isel.o arch/amd64/emit.o arch/amd64/winabi.o
+ARM64OBJ = arch/arm64/targ.o arch/arm64/abi.o arch/arm64/isel.o arch/arm64/emit.o
+RV64OBJ  = arch/rv64/targ.o arch/rv64/abi.o arch/rv64/isel.o arch/rv64/emit.o
 FILAPIOBJ = filapi/src/ilbuilder.o filapi/src/data.o filapi/src/module.o filapi/src/type.o
 
 # Objects required for core library functionality (without main.o)
@@ -55,9 +55,9 @@ $(BUILDDIR)/%.o: %.c
 
 $(addprefix $(BUILDDIR)/,$(COMMOBJ)): all.h ops.h
 $(addprefix $(BUILDDIR)/,$(FILAPIOBJ)): filapi/include/ilbuilder.h filapi/include/data.h filapi/include/module.h all.h ops.h config.h
-$(addprefix $(BUILDDIR)/,$(AMD64OBJ)): amd64/all.h
-$(addprefix $(BUILDDIR)/,$(ARM64OBJ)): arm64/all.h
-$(addprefix $(BUILDDIR)/,$(RV64OBJ)): rv64/all.h
+$(addprefix $(BUILDDIR)/,$(AMD64OBJ)): arch/amd64/all.h
+$(addprefix $(BUILDDIR)/,$(ARM64OBJ)): arch/arm64/all.h
+$(addprefix $(BUILDDIR)/,$(RV64OBJ)): arch/rv64/all.h
 $(BUILDDIR)/main.o: config.h main.c
 
 config.h:

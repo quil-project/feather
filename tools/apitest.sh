@@ -16,9 +16,9 @@ for o in \
   $objdir/src/opt/fold.o $objdir/src/opt/gvn.o $objdir/src/opt/gcm.o $objdir/src/opt/simpl.o $objdir/src/opt/ifopt.o \
   $objdir/src/reg/live.o $objdir/src/reg/spill.o $objdir/src/reg/rega.o \
   $objdir/src/emit/emit.o $objdir/src/emit/abi.o \
-  $objdir/amd64/targ.o $objdir/amd64/sysv.o $objdir/amd64/isel.o $objdir/amd64/emit.o $objdir/amd64/winabi.o \
-  $objdir/arm64/targ.o $objdir/arm64/abi.o $objdir/arm64/isel.o $objdir/arm64/emit.o \
-  $objdir/rv64/targ.o $objdir/rv64/abi.o $objdir/rv64/isel.o $objdir/rv64/emit.o \
+  $objdir/arch/amd64/targ.o $objdir/arch/amd64/sysv.o $objdir/arch/amd64/isel.o $objdir/arch/amd64/emit.o $objdir/arch/amd64/winabi.o \
+  $objdir/arch/arm64/targ.o $objdir/arch/arm64/abi.o $objdir/arch/arm64/isel.o $objdir/arch/arm64/emit.o \
+  $objdir/arch/rv64/targ.o $objdir/arch/rv64/abi.o $objdir/arch/rv64/isel.o $objdir/arch/rv64/emit.o \
   $objdir/filapi/src/ilbuilder.o $objdir/filapi/src/data.o $objdir/filapi/src/module.o $objdir/filapi/src/type.o; do
   if test -f "$o"; then
     objs="$objs $o"

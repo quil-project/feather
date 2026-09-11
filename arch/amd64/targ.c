@@ -17,7 +17,7 @@ Amd64Op amd64_op[NOp] = {
                           zf, \
                           lf, \
                       },
-#include "../ops.h"
+#include "../../ops.h"
 };
 
 static int
