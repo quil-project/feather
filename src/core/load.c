@@ -511,26 +511,43 @@ void loadopt(Fn *fn) {
                                 }
                                 i = &b->ins[ni++];
                                 if (isload(i->op) && !req(i->arg[1], R)) {
-                                        ext = Oextsb + i->op - Oloadsb;
-                                        switch (i->op) {
-                                        default:
-                                                die("unreachable");
-                                        case Oloadsb:
-                                        case Oloadub:
-                                        case Oloadsh:
-                                        case Oloaduh:
-                                                i->op = ext;
-                                                break;
-                                        case Oloadsw:
-                                        case Oloaduw:
-                                                if (i->cls == Kl) {
+                                        if (rtype(i->arg[1]) == RCon) {
+                                                Con *c = &curf->con[i->arg[1].val];
+                                                if (c->type == CBits && !c->flt) {
+                                                        int lsz = loadsz(i);
+                                                        int64_t v = c->bits.i & (int64_t)MASK(lsz);
+                                                        switch (i->op) {
+                                                        case Oloadsb: v = (int8_t)v; break;
+                                                        case Oloadsh: v = (int16_t)v; break;
+                                                        case Oloadsw: v = (int32_t)v; break;
+                                                        default: break; // unsigned: masked value is already correct
+                                                        }
+                                                        Con nc = {.type = CBits, .bits.i = v};
+                                                        i->arg[1] = newcon(&nc, curf);
+                                                }
+                                                i->op = Ocopy;
+                                        } else {
+                                                ext = Oextsb + i->op - Oloadsb;
+                                                switch (i->op) {
+                                                default:
+                                                        die("unreachable");
+                                                case Oloadsb:
+                                                case Oloadub:
+                                                case Oloadsh:
+                                                case Oloaduh:
                                                         i->op = ext;
                                                         break;
+                                                case Oloadsw:
+                                                case Oloaduw:
+                                                        if (i->cls == Kl) {
+                                                                i->op = ext;
+                                                                break;
+                                                        }
+                                                        /* fall through */
+                                                case Oload:
+                                                        i->op = Ocopy;
+                                                        break;
                                                 }
-                                                /* fall through */
-                                        case Oload:
-                                                i->op = Ocopy;
-                                                break;
                                         }
                                         i->arg[0] = i->arg[1];
                                         i->arg[1] = R;
